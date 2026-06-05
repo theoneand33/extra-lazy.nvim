@@ -2,7 +2,7 @@
 
 Enhanced editor mode for LazyVim — type-to-edit, keyboard-driven workflow, mouse support.
 
-Inspired by [ox](https://github.com/curlpipe/ox) and [novim](https://github.com/link2004/novim).
+Inspired by [ox](https://github.com/curlpipe/ox), [novim](https://github.com/link2004/novim), and [micro](https://github.com/zyedidia/micro).
 
 ## Features
 
