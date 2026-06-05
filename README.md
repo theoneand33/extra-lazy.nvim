@@ -1,12 +1,12 @@
 # extra-lazy.nvim
 
-Enhanced editor mode for LazyVim — type-to-edit, keyboard-driven workflow, mouse support.
+Enhanced editor mode for LazyVim for (extra) lazy people like me.
 
-Inspired by [ox](https://github.com/curlpipe/ox), [novim](https://github.com/link2004/novim), and [micro](https://github.com/zyedidia/micro).
+Inspired by [micro](https://github.com/zyedidia/micro), [ox](https://github.com/curlpipe/ox) and [novim](https://github.com/link2004/novim).
 
 ## Features
 
-- **Type-to-insert** — Press any printable character in normal mode to insert it (no more `i` before typing)
+- **Type-to-insert** — Press any printable character in normal mode to insert it
 - **Visual mode replace** — Select text and type to replace it
 - **Ctrl shortcuts** — Save (`Ctrl+S`), Quit (`Ctrl+Q`), Undo/Redo (`Ctrl+Z`/`Ctrl+Y`), Select All (`Ctrl+A`), and more
 - **Mouse support** — Click, double-click, selection with system clipboard integration
@@ -63,7 +63,7 @@ use {
 
 ## Configuration
 
-The plugin is zero-config by design. If you want to disable certain keymaps, you can override them after `setup()`:
+The plugin is zero-config by design (aka I can't be bothered). If you want to disable certain keymaps, you can override them after `setup()`:
 
 ```lua
 require("extra-lazy").setup()
