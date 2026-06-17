@@ -199,10 +199,26 @@ function M.setup()
   end, { desc = "Go to Line" })
 
   -- Ctrl+K: Open command-line (overrides window-up)
+  -- Set immediately for early coverage, then re-set on VeryLazy to beat
+  -- LazyVim's own <C-k> (window-up) which also maps on VeryLazy.
   vim.keymap.set({ "n", "i" }, "<C-k>", function()
     vim.cmd("stopinsert")
-    vim.api.nvim_feedkeys(":", "n", false)
+    vim.cmd("normal! :")
   end, { desc = "Command Line" })
+
+  -- ponytail: LazyVim overrides <C-k> on VeryLazy, so we re-map there too.
+  -- Our autocmd is registered during plugin config (before VeryLazy fires
+  -- in normal startup), so our callback runs after LazyVim's.
+  vim.api.nvim_create_autocmd("User", {
+    pattern = "VeryLazy",
+    group = augroup,
+    callback = function()
+      vim.keymap.set({ "n", "i" }, "<C-k>", function()
+        vim.cmd("stopinsert")
+        vim.cmd("normal! :")
+      end, { desc = "Command Line" })
+    end,
+  })
 
   -- Double-Esc: Quit (novim-style)
   vim.keymap.set("n", "<Esc><Esc>", function()
