@@ -78,6 +78,41 @@ function M.setup()
   ----------------------------------------------------------------------
   -- 3. Global Keymaps (override LazyVim defaults)
   ----------------------------------------------------------------------
+  local function stop()
+    vim.cmd("stopinsert")
+  end
+
+  local function try_quit()
+    local unsaved = false
+    for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+      if vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].modified then
+        unsaved = true
+        break
+      end
+    end
+    if not unsaved then
+      vim.cmd("qa")
+      return
+    end
+    vim.ui.select(
+      { "Save and Quit", "Quit without Saving", "Cancel" },
+      { prompt = "You have unsaved changes:" },
+      function(choice)
+        if choice == "Save and Quit" then
+          vim.cmd("wa")
+          vim.cmd("qa")
+        elseif choice == "Quit without Saving" then
+          vim.cmd("qa!")
+        end
+      end
+    )
+  end
+
+  local function open_cmdline()
+    stop()
+    vim.cmd("normal! :")
+  end
+
   -- Ctrl+S: Save file
   vim.keymap.set({ "n", "i", "v", "s" }, "<C-s>", function()
     if vim.fn.mode():find("i") then
@@ -93,69 +128,45 @@ function M.setup()
   end, { desc = "Save File" })
 
   -- Ctrl+Q: Quit
-  vim.keymap.set({ "n", "i", "v" }, "<C-q>", function()
-    local unsaved = false
-    for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-      if vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].modified then
-        unsaved = true
-        break
-      end
-    end
-    if not unsaved then
-      vim.cmd("qa")
-      return
-    end
-    vim.ui.select(
-      { "Save and Quit", "Quit without Saving", "Cancel" },
-      { prompt = "You have unsaved changes:" },
-      function(choice)
-        if choice == "Save and Quit" then
-          vim.cmd("wa")
-          vim.cmd("qa")
-        elseif choice == "Quit without Saving" then
-          vim.cmd("qa!")
-        end
-      end
-    )
-  end, { desc = "Quit" })
+  vim.keymap.set({ "n", "i", "v" }, "<C-q>", try_quit, { desc = "Quit" })
 
   -- Ctrl+N: New file
   vim.keymap.set({ "n", "i", "v" }, "<C-n>", function()
-    vim.cmd("stopinsert")
+    stop()
     vim.cmd("enew")
   end, { desc = "New File" })
 
   -- Ctrl+O: Open file
   vim.keymap.set({ "n", "i", "v" }, "<C-o>", function()
-    vim.cmd("stopinsert")
+    stop()
     vim.ui.input({ prompt = "Open file: " }, function(input)
       if input and input ~= "" then
-        vim.cmd("e " .. vim.fn.fnameescape(input))
+        vim.cmd.e({ args = { input } })
       end
     end)
   end, { desc = "Open File" })
 
   -- Ctrl+Z: Undo (overrides terminal suspend)
   vim.keymap.set({ "n", "i", "v" }, "<C-z>", function()
-    vim.cmd("stopinsert")
+    stop()
     vim.cmd("undo")
   end, { desc = "Undo" })
 
   -- Ctrl+Y: Redo
   vim.keymap.set({ "n", "i", "v" }, "<C-y>", function()
-    vim.cmd("stopinsert")
+    stop()
     vim.cmd("redo")
   end, { desc = "Redo" })
 
   -- Ctrl+A: Select all
   vim.keymap.set({ "n", "i", "v" }, "<C-a>", function()
-    vim.cmd("stopinsert")
+    stop()
     vim.cmd("normal! ggVG")
   end, { desc = "Select All" })
 
   -- Ctrl+F: Search with Telescope
   vim.keymap.set({ "n", "i", "v" }, "<C-f>", function()
-    vim.cmd("stopinsert")
+    stop()
     local ok = pcall(function()
       require("telescope.builtin").live_grep()
     end)
@@ -166,7 +177,7 @@ function M.setup()
 
   -- Ctrl+R: Find word under cursor
   vim.keymap.set({ "n", "i", "v" }, "<C-r>", function()
-    vim.cmd("stopinsert")
+    stop()
     local ok = pcall(function()
       require("telescope.builtin").grep_string()
     end)
@@ -174,7 +185,7 @@ function M.setup()
       vim.ui.input({ prompt = "Search: " }, function(s)
         if s and s ~= "" then
           vim.fn.histadd("search", s)
-          vim.cmd("let @/ = '" .. s:gsub("'", "''") .. "'")
+          vim.fn.setreg("/", s)
           vim.cmd("normal! n")
         end
       end)
@@ -183,13 +194,13 @@ function M.setup()
 
   -- Ctrl+D: Delete line (overrides scroll half-page)
   vim.keymap.set({ "n", "i" }, "<C-d>", function()
-    vim.cmd("stopinsert")
+    stop()
     vim.cmd("normal! dd")
   end, { desc = "Delete Line" })
 
   -- Ctrl+G: Go to line (overrides LazyVim's git status)
   vim.keymap.set({ "n", "i", "v" }, "<C-g>", function()
-    vim.cmd("stopinsert")
+    stop()
     vim.ui.input({ prompt = "Go to line: " }, function(input)
       local line = tonumber(input)
       if line and line > 0 then
@@ -201,10 +212,7 @@ function M.setup()
   -- Ctrl+K: Open command-line (overrides window-up)
   -- Set immediately for early coverage, then re-set on VeryLazy to beat
   -- LazyVim's own <C-k> (window-up) which also maps on VeryLazy.
-  vim.keymap.set({ "n", "i" }, "<C-k>", function()
-    vim.cmd("stopinsert")
-    vim.cmd("normal! :")
-  end, { desc = "Command Line" })
+  vim.keymap.set({ "n", "i" }, "<C-k>", open_cmdline, { desc = "Command Line" })
 
   -- ponytail: LazyVim overrides <C-k> on VeryLazy, so we re-map there too.
   -- Our autocmd is registered during plugin config (before VeryLazy fires
@@ -213,39 +221,12 @@ function M.setup()
     pattern = "VeryLazy",
     group = augroup,
     callback = function()
-      vim.keymap.set({ "n", "i" }, "<C-k>", function()
-        vim.cmd("stopinsert")
-        vim.cmd("normal! :")
-      end, { desc = "Command Line" })
+      vim.keymap.set({ "n", "i" }, "<C-k>", open_cmdline, { desc = "Command Line" })
     end,
   })
 
   -- Double-Esc: Quit (novim-style)
-  vim.keymap.set("n", "<Esc><Esc>", function()
-    local unsaved = false
-    for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-      if vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].modified then
-        unsaved = true
-        break
-      end
-    end
-    if not unsaved then
-      vim.cmd("qa")
-      return
-    end
-    vim.ui.select(
-      { "Save and Quit", "Quit without Saving", "Cancel" },
-      { prompt = "You have unsaved changes:" },
-      function(choice)
-        if choice == "Save and Quit" then
-          vim.cmd("wa")
-          vim.cmd("qa")
-        elseif choice == "Quit without Saving" then
-          vim.cmd("qa!")
-        end
-      end
-    )
-  end, { desc = "Quit (double Esc)" })
+  vim.keymap.set("n", "<Esc><Esc>", try_quit, { desc = "Quit (double Esc)" })
 
   ----------------------------------------------------------------------
   -- 4. Type-to-Insert Mode
@@ -284,18 +265,11 @@ function M.setup()
   ----------------------------------------------------------------------
   -- 6. Arrow-key Selection
   ----------------------------------------------------------------------
-  vim.keymap.set("n", "<S-Left>", "vh", { desc = "Select Left" })
-  vim.keymap.set("n", "<S-Right>", "vl", { desc = "Select Right" })
-  vim.keymap.set("n", "<S-Up>", "vk", { desc = "Select Up" })
-  vim.keymap.set("n", "<S-Down>", "vj", { desc = "Select Down" })
-  vim.keymap.set("i", "<S-Left>", "<Esc>vh", { desc = "Select Left" })
-  vim.keymap.set("i", "<S-Right>", "<Esc>vl", { desc = "Select Right" })
-  vim.keymap.set("i", "<S-Up>", "<Esc>vk", { desc = "Select Up" })
-  vim.keymap.set("i", "<S-Down>", "<Esc>vj", { desc = "Select Down" })
-  vim.keymap.set("v", "<S-Left>", "h", { desc = "Extend Selection Left" })
-  vim.keymap.set("v", "<S-Right>", "l", { desc = "Extend Selection Right" })
-  vim.keymap.set("v", "<S-Up>", "k", { desc = "Extend Selection Up" })
-  vim.keymap.set("v", "<S-Down>", "j", { desc = "Extend Selection Down" })
+  for _, dir in ipairs({ { "Left", "h" }, { "Right", "l" }, { "Up", "k" }, { "Down", "j" } }) do
+    vim.keymap.set("n", "<S-" .. dir[1] .. ">", "v" .. dir[2], { desc = "Select " .. dir[1] })
+    vim.keymap.set("i", "<S-" .. dir[1] .. ">", "<Esc>v" .. dir[2], { desc = "Select " .. dir[1] })
+    vim.keymap.set("v", "<S-" .. dir[1] .. ">", dir[2], { desc = "Extend Selection " .. dir[1] })
+  end
 
   ----------------------------------------------------------------------
   -- 7. Clipboard Operations
