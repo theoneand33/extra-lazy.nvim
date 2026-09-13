@@ -37,7 +37,7 @@ function M.setup()
   local changed_hl_ns = vim.api.nvim_create_namespace("extra_lazy_changed_lines")
   local changed_bufs = {}
 
-  vim.api.nvim_create_autocmd("TextChangedI", {
+  vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
     group = augroup,
     pattern = "*",
     callback = function()
@@ -54,10 +54,18 @@ function M.setup()
   vim.api.nvim_create_autocmd("BufWritePost", {
     group = augroup,
     pattern = "*",
-    callback = function()
-      local buf = vim.api.nvim_get_current_buf()
+    callback = function(args)
+      local buf = args.buf
       vim.api.nvim_buf_clear_namespace(buf, changed_hl_ns, 0, -1)
       changed_bufs[buf] = {}
+    end,
+  })
+
+  vim.api.nvim_create_autocmd("BufWipeout", {
+    group = augroup,
+    pattern = "*",
+    callback = function(args)
+      changed_bufs[args.buf] = nil
     end,
   })
 
@@ -80,12 +88,22 @@ function M.setup()
   ----------------------------------------------------------------------
   local function stop()
     vim.cmd("stopinsert")
+    -- ponytail: stopinsert is a no-op in visual/select, so leave those too.
+    if vim.fn.mode():match("[vV\22\19sS]") then
+      vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "nx", false)
+    end
   end
 
   local function try_quit()
     local unsaved = false
     for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-      if vim.api.nvim_buf_is_loaded(buf) and vim.bo[buf].modified then
+      if
+        vim.api.nvim_buf_is_valid(buf)
+        and vim.api.nvim_buf_is_loaded(buf)
+        and vim.fn.buflisted(buf) == 1
+        and vim.bo[buf].buftype == ""
+        and vim.bo[buf].modified
+      then
         unsaved = true
         break
       end
@@ -110,7 +128,8 @@ function M.setup()
 
   local function open_cmdline()
     stop()
-    vim.cmd("normal! :")
+    -- ponytail: :normal! cannot enter the cmdline (verified no-op), feed the key instead.
+    vim.api.nvim_feedkeys(":", "n", false)
   end
 
   -- Ctrl+S: Save file
@@ -171,7 +190,7 @@ function M.setup()
       require("telescope.builtin").live_grep()
     end)
     if not ok then
-      vim.cmd("normal! /")
+      vim.api.nvim_feedkeys("/", "n", false)
     end
   end, { desc = "Find in Files" })
 
@@ -195,16 +214,17 @@ function M.setup()
   -- Ctrl+D: Delete line (overrides scroll half-page)
   vim.keymap.set({ "n", "i" }, "<C-d>", function()
     stop()
-    vim.cmd("normal! dd")
+    vim.cmd('normal! "_dd')
   end, { desc = "Delete Line" })
 
   -- Ctrl+G: Go to line (overrides LazyVim's git status)
   vim.keymap.set({ "n", "i", "v" }, "<C-g>", function()
     stop()
     vim.ui.input({ prompt = "Go to line: " }, function(input)
-      local line = tonumber(input)
+      local line = tonumber(input or "")
       if line and line > 0 then
-        vim.api.nvim_win_set_cursor(0, { line, 0 })
+        line = math.min(line, vim.api.nvim_buf_line_count(0))
+        pcall(vim.api.nvim_win_set_cursor, 0, { line, 0 })
       end
     end)
   end, { desc = "Go to Line" })
@@ -232,33 +252,24 @@ function M.setup()
   -- 4. Type-to-Insert Mode
   ----------------------------------------------------------------------
   -- Every printable character in normal mode enters insert mode and types it
-  local printable_chars = vim.split(
-    " !\"#$%&'()*+,-./0123456789:;<=>@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_`abcdefghijklmnopqrstuvwxyz{|}~",
-    ""
-  )
-  for _, char in ipairs(printable_chars) do
-    if char ~= "?" and char ~= "\\" then
-      vim.keymap.set("n", char, "i" .. char, { noremap = true, desc = "" })
-    end
+  -- ponytail: byte loop covers all of 32-126 (? and \ were silently missing before).
+  for code = 32, 126 do
+    local char = string.char(code)
+    vim.keymap.set("n", char, "i" .. char, { noremap = true, desc = "" })
   end
 
   ----------------------------------------------------------------------
   -- 5. Visual Mode: typing replaces selection
   ----------------------------------------------------------------------
-  local v_chars = vim.split(
-    " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_`abcdefghijklmnopqrstuvwxyz{|}~",
-    ""
-  )
-  for _, char in ipairs(v_chars) do
-    if char ~= "\\" then
-      vim.keymap.set("v", char, '"_c' .. char, { noremap = true, desc = "" })
-    end
+  for code = 32, 126 do
+    local char = string.char(code)
+    vim.keymap.set("v", char, '"_c' .. char, { noremap = true, desc = "" })
   end
 
   -- Visual mode Enter replaces selection with newline
   vim.keymap.set("v", "<CR>", '"_c<CR>', { noremap = true, desc = "" })
   vim.keymap.set("n", "<CR>", "i<CR>", { noremap = true, desc = "" })
-  vim.keymap.set("n", "<BS>", "X", { desc = "Delete Character Backward" })
+  vim.keymap.set("n", "<BS>", '"_X', { desc = "Delete Character Backward" })
   vim.keymap.set("v", "<BS>", '"_d', { desc = "Delete Selection" })
   vim.keymap.set("v", "<Del>", '"_d', { desc = "Delete Selection" })
 
@@ -278,7 +289,7 @@ function M.setup()
   vim.keymap.set("v", "<C-x>", '"+x', { desc = "Cut" })
   vim.keymap.set("n", "<C-v>", '"+gP', { desc = "Paste" })
   vim.keymap.set("i", "<C-v>", '<C-r>+', { desc = "Paste" })
-  vim.keymap.set("v", "<C-v>", '"+P', { desc = "Paste" })
+  vim.keymap.set("v", "<C-v>", '"_d"+P', { desc = "Paste" })
 end
 
 return M
