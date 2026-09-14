@@ -13,7 +13,6 @@ function M.setup()
   vim.opt.clipboard = "unnamedplus"
   vim.opt.showmode = false
   vim.opt.virtualedit = "onemore"
-  vim.opt.backspace = { "indent", "eol", "start" }
 
   ----------------------------------------------------------------------
   -- 2. Autocommands
@@ -85,15 +84,6 @@ function M.setup()
     end,
   })
 
-  vim.api.nvim_create_autocmd({ "BufWipeout", "BufDelete" }, {
-    group = augroup,
-    pattern = "*",
-    callback = function(args)
-      changed_bufs[args.buf] = nil
-      attached[args.buf] = nil
-    end,
-  })
-
   -- Dynamic hints for statusline
   ---@diagnostic disable-next-line: lowercase-global
   function _G.extra_lazy_hints()
@@ -120,16 +110,15 @@ function M.setup()
     end
   end
 
+  local function save_err(err)
+    local msg = tostring(err):gsub("^Vim:%w+:", ""):gsub("^%s+", "")
+    vim.api.nvim_echo({ { "Error saving: " .. msg, "ErrorMsg" } }, false, {})
+  end
+
   local function try_quit()
     local unsaved = false
-    for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-      if
-        vim.api.nvim_buf_is_valid(buf)
-        and vim.api.nvim_buf_is_loaded(buf)
-        and vim.fn.buflisted(buf) == 1
-        and vim.bo[buf].buftype == ""
-        and vim.bo[buf].modified
-      then
+    for _, info in ipairs(vim.fn.getbufinfo({ buflisted = 1, bufmodified = 1 })) do
+      if info.loaded ~= 0 and vim.bo[info.bufnr].buftype == "" then
         unsaved = true
         break
       end
@@ -148,8 +137,7 @@ function M.setup()
           if ok then
             vim.cmd("qa")
           elseif err then
-            local msg = tostring(err):gsub("^Vim:%w+:", ""):gsub("^%s+", "")
-            vim.api.nvim_echo({ { "Error saving: " .. msg, "ErrorMsg" } }, false, {})
+            save_err(err)
           end
         elseif choice == "Quit without Saving" then
           vim.cmd("qa!")
@@ -174,8 +162,7 @@ function M.setup()
     if ok then
       vim.api.nvim_echo({ { "Saved!", "String" } }, false, {})
     elseif err then
-      local msg = tostring(err):gsub("^Vim:%w+:", ""):gsub("^%s+", "")
-      vim.api.nvim_echo({ { "Error saving: " .. msg, "ErrorMsg" } }, false, {})
+      save_err(err)
     end
   end, { desc = "Save File" })
 
