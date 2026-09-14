@@ -5,10 +5,6 @@
 local M = {}
 
 function M.setup()
-  -- Disable terminal XON/XOFF flow control so Ctrl+S and Ctrl+Q
-  -- aren't intercepted by the terminal (common cause of "freeze").
-  vim.fn.system({ "stty", "-ixon" })
-
   ----------------------------------------------------------------------
   -- 1. Display & Editor Options
   ----------------------------------------------------------------------
@@ -34,20 +30,48 @@ function M.setup()
   })
 
   -- Track changed lines with green highlights (like ox/novim)
+  -- ponytail: on_lines gives the exact edited range; cursor-line-only
+  -- marking missed multi-line pastes.
   local changed_hl_ns = vim.api.nvim_create_namespace("extra_lazy_changed_lines")
   local changed_bufs = {}
+  local attached = {}
 
-  vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
+  local function mark_changed(buf, first, new_last)
+    if not vim.api.nvim_buf_is_valid(buf) then
+      return
+    end
+    changed_bufs[buf] = changed_bufs[buf] or {}
+    for l = first, new_last - 1 do
+      if not changed_bufs[buf][l] then
+        changed_bufs[buf][l] = true
+        pcall(vim.api.nvim_buf_add_highlight, buf, changed_hl_ns, "DiffAdd", l, 0, -1)
+      end
+    end
+  end
+
+  local function attach_changed(buf)
+    if attached[buf] or not vim.api.nvim_buf_is_valid(buf) then
+      return
+    end
+    local ok = pcall(vim.api.nvim_buf_attach, buf, false, {
+      on_lines = function(_, b, _, firstline, _, new_last, _)
+        mark_changed(b, firstline, new_last)
+      end,
+      on_detach = function(_, b)
+        attached[b] = nil
+        changed_bufs[b] = nil
+      end,
+    })
+    if ok then
+      attached[buf] = true
+    end
+  end
+
+  vim.api.nvim_create_autocmd({ "BufEnter", "BufReadPost", "BufNewFile" }, {
     group = augroup,
     pattern = "*",
-    callback = function()
-      local line = vim.fn.line(".")
-      local buf = vim.api.nvim_get_current_buf()
-      changed_bufs[buf] = changed_bufs[buf] or {}
-      if not changed_bufs[buf][line] then
-        changed_bufs[buf][line] = true
-        pcall(vim.api.nvim_buf_add_highlight, buf, changed_hl_ns, "DiffAdd", line - 1, 0, -1)
-      end
+    callback = function(args)
+      attach_changed(args.buf)
     end,
   })
 
@@ -61,11 +85,12 @@ function M.setup()
     end,
   })
 
-  vim.api.nvim_create_autocmd("BufWipeout", {
+  vim.api.nvim_create_autocmd({ "BufWipeout", "BufDelete" }, {
     group = augroup,
     pattern = "*",
     callback = function(args)
       changed_bufs[args.buf] = nil
+      attached[args.buf] = nil
     end,
   })
 
@@ -88,9 +113,10 @@ function M.setup()
   ----------------------------------------------------------------------
   local function stop()
     vim.cmd("stopinsert")
-    -- ponytail: stopinsert is a no-op in visual/select, so leave those too.
+    -- ponytail: feedkeys is async, so :normal! from visual would run per
+    -- line; normal! <Esc> leaves visual synchronously (verified).
     if vim.fn.mode():match("[vV\22\19sS]") then
-      vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes("<Esc>", true, false, true), "nx", false)
+      vim.cmd("normal! " .. vim.api.nvim_replace_termcodes("<Esc>", true, false, true))
     end
   end
 
@@ -117,8 +143,14 @@ function M.setup()
       { prompt = "You have unsaved changes:" },
       function(choice)
         if choice == "Save and Quit" then
-          vim.cmd("wa")
-          vim.cmd("qa")
+          -- ponytail: :wa fails on unnamed buffers (E141); don't quit then.
+          local ok, err = pcall(vim.cmd, "wa")
+          if ok then
+            vim.cmd("qa")
+          elseif err then
+            local msg = tostring(err):gsub("^Vim:%w+:", ""):gsub("^%s+", "")
+            vim.api.nvim_echo({ { "Error saving: " .. msg, "ErrorMsg" } }, false, {})
+          end
         elseif choice == "Quit without Saving" then
           vim.cmd("qa!")
         end
@@ -134,7 +166,8 @@ function M.setup()
 
   -- Ctrl+S: Save file
   vim.keymap.set({ "n", "i", "v", "s" }, "<C-s>", function()
-    if vim.fn.mode():find("i") then
+    -- ponytail: find("i") also matches "niI" (normal); check first char.
+    if vim.fn.mode():sub(1, 1) == "i" then
       vim.cmd("stopinsert")
     end
     local ok, err = pcall(vim.cmd, "w")
@@ -205,7 +238,8 @@ function M.setup()
         if s and s ~= "" then
           vim.fn.histadd("search", s)
           vim.fn.setreg("/", s)
-          vim.cmd("normal! n")
+          -- ponytail: no match throws E486; stay silent like / does.
+          pcall(vim.cmd, "normal! n")
         end
       end)
     end
@@ -252,8 +286,9 @@ function M.setup()
   -- 4. Type-to-Insert Mode
   ----------------------------------------------------------------------
   -- Every printable character in normal mode enters insert mode and types it
-  -- ponytail: byte loop covers all of 32-126 (? and \ were silently missing before).
-  for code = 32, 126 do
+  -- ponytail: byte loop covers all of 33-126; space (32) is skipped so
+  -- <leader> (space) keeps working (? and \ were silently missing before).
+  for code = 33, 126 do
     local char = string.char(code)
     vim.keymap.set("n", char, "i" .. char, { noremap = true, desc = "" })
   end
