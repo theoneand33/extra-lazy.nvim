@@ -35,8 +35,14 @@ function M.setup()
   local changed_bufs = {}
   local attached = {}
 
+  local function is_file_buf(buf)
+    -- ponytail: dashboard/lazy/etc use buftype=nofile; highlighting those
+    -- paints the whole home screen green.
+    return vim.api.nvim_buf_is_valid(buf) and vim.bo[buf].buftype == ""
+  end
+
   local function mark_changed(buf, first, new_last)
-    if not vim.api.nvim_buf_is_valid(buf) then
+    if not is_file_buf(buf) then
       return
     end
     changed_bufs[buf] = changed_bufs[buf] or {}
@@ -49,7 +55,7 @@ function M.setup()
   end
 
   local function attach_changed(buf)
-    if attached[buf] or not vim.api.nvim_buf_is_valid(buf) then
+    if attached[buf] or not is_file_buf(buf) then
       return
     end
     local ok = pcall(vim.api.nvim_buf_attach, buf, false, {
@@ -70,6 +76,10 @@ function M.setup()
     group = augroup,
     pattern = "*",
     callback = function(args)
+      if not is_file_buf(args.buf) then
+        pcall(vim.api.nvim_buf_clear_namespace, args.buf, changed_hl_ns, 0, -1)
+        return
+      end
       attach_changed(args.buf)
     end,
   })
