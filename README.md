@@ -52,7 +52,8 @@ use {
 | `Ctrl+A` | Select all |
 | `Ctrl+F` | Find in files (Telescope) |
 | `Ctrl+R` | Find word under cursor |
-| `Ctrl+D` | Delete line |
+| `Ctrl+D` (normal/insert) | Delete line |
+| `Ctrl+D` (visual) | Delete selection without changing registers |
 | `Ctrl+G` | Go to line |
 | `Ctrl+K` | Command line |
 | `Esc Esc` | Quick quit |

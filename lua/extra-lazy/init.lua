@@ -3,8 +3,13 @@
 -- Key features: Ctrl+S save, Ctrl+Q quit, type-to-edit, mouse-driven operation
 
 local M = {}
+local has_setup = false
 
 function M.setup()
+  if has_setup then
+    return
+  end
+
   ----------------------------------------------------------------------
   -- 1. Display & Editor Options
   ----------------------------------------------------------------------
@@ -247,6 +252,7 @@ function M.setup()
     stop()
     vim.cmd('normal! "_dd')
   end, { desc = "Delete Line" })
+  vim.keymap.set("v", "<C-d>", '"_d', { desc = "Delete Selection" })
 
   -- Ctrl+G: Go to line (overrides LazyVim's git status)
   vim.keymap.set({ "n", "i", "v" }, "<C-g>", function()
@@ -322,6 +328,12 @@ function M.setup()
   vim.keymap.set("n", "<C-v>", '"+gP', { desc = "Paste" })
   vim.keymap.set("i", "<C-v>", '<C-r>+', { desc = "Paste" })
   vim.keymap.set("v", "<C-v>", '"_d"+P', { desc = "Paste" })
+  has_setup = true
+end
+
+-- ponytail: dev reload keeps module cache, so setup() would no-op
+function M._reset()
+  has_setup = false
 end
 
 return M
