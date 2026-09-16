@@ -64,13 +64,39 @@ use {
 
 ## Configuration
 
-The plugin is zero-config by design (aka I can't be bothered). If you want to disable certain keymaps, you can override them after `setup()`:
+Defaults shown; pass only what you want to change:
 
 ```lua
-require("extra-lazy").setup()
--- Override any conflicting keymap
-vim.keymap.del("n", "<C-d>") -- restore scroll half-page
+require("extra-lazy").setup({
+  -- Editor options applied at setup (any vim option)
+  options = {
+    mouse = "a",
+    mousemodel = "extend",
+    clipboard = "unnamedplus",
+    showmode = false,
+    virtualedit = "onemore",
+  },
+  -- Individual feature toggles
+  mouse_double_click = true,   -- double-click opens files in netrw
+  changed_lines = "DiffAdd",   -- highlight group for changed lines; false to disable
+  hints = {                    -- statusline hint text (false to disable)
+    visual = "^C Copy  ^X Cut  ^A All",
+    modified = "^S Save  ^Z Undo  ^Q Quit",
+    normal = "^V Paste  ^A All  ^Q Quit",
+  },
+  type_to_insert = true,       -- type any character in normal mode to insert it
+  visual_replace = true,       -- type over a visual selection to replace it
+  arrow_selection = true,      -- Shift+Arrow to select text
+  -- Remap or disable individual shortcuts ("lhs" -> false, or "lhs" -> new key)
+  keymaps = {
+    ["<C-d>"] = false,         -- restore default scroll half-page
+    ["<C-s>"] = "<leader>w",   -- move save elsewhere
+    -- keymaps = false disables all plugin keymaps
+  },
+})
 ```
+
+Keymap remaps win over type-to-insert, so `["<C-s>"] = "<leader>w"` frees `s` for normal motion again.
 
 ## Statusline Integration
 
