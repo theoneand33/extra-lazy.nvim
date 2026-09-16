@@ -5,19 +5,52 @@
 local M = {}
 local has_setup = false
 
-function M.setup()
+function M.setup(opts)
   if has_setup then
     return
   end
 
+  opts = vim.tbl_deep_extend("force", {
+    options = {
+      mouse = "a",
+      mousemodel = "extend",
+      clipboard = "unnamedplus",
+      showmode = false,
+      virtualedit = "onemore",
+    },
+    mouse_double_click = true,
+    changed_lines = "DiffAdd",
+    hints = {
+      visual = "^C Copy  ^X Cut  ^A All",
+      modified = "^S Save  ^Z Undo  ^Q Quit",
+      normal = "^V Paste  ^A All  ^Q Quit",
+    },
+    type_to_insert = true,
+    visual_replace = true,
+    arrow_selection = true,
+    keymaps = {},
+  }, opts or {})
+
+  local overrides = {}
+  local function map(modes, lhs, rhs, options)
+    if opts.keymaps == false or opts.keymaps[lhs] == false then
+      return
+    end
+    local key = opts.keymaps[lhs]
+    if key and overrides then
+      -- ponytail: remapped keymaps must win over type-to-insert loops, so
+      -- they're applied after all default mappings are set.
+      overrides[#overrides + 1] = { modes, key, rhs, options }
+    else
+      vim.keymap.set(modes, key or lhs, rhs, options)
+    end
+  end
   ----------------------------------------------------------------------
   -- 1. Display & Editor Options
   ----------------------------------------------------------------------
-  vim.opt.mouse = "a"
-  vim.opt.mousemodel = "extend"
-  vim.opt.clipboard = "unnamedplus"
-  vim.opt.showmode = false
-  vim.opt.virtualedit = "onemore"
+  for name, value in pairs(opts.options or {}) do
+    vim.opt[name] = value
+  end
 
   ----------------------------------------------------------------------
   -- 2. Autocommands
@@ -25,13 +58,15 @@ function M.setup()
   local augroup = vim.api.nvim_create_augroup("extra_lazy", { clear = true })
 
   -- Mouse double-click opens file/folder under cursor in netrw
-  vim.api.nvim_create_autocmd("FileType", {
-    group = augroup,
-    pattern = "netrw",
-    callback = function()
-      vim.keymap.set("n", "<2-LeftMouse>", "<CR>", { buffer = true, silent = true })
-    end,
-  })
+  if opts.mouse_double_click then
+    vim.api.nvim_create_autocmd("FileType", {
+      group = augroup,
+      pattern = "netrw",
+      callback = function()
+        map("n", "<2-LeftMouse>", "<CR>", { buffer = true, silent = true })
+      end,
+    })
+  end
 
   -- Track changed lines with green highlights (like ox/novim)
   -- ponytail: on_lines gives the exact edited range; cursor-line-only
@@ -54,7 +89,7 @@ function M.setup()
     for l = first, new_last - 1 do
       if not changed_bufs[buf][l] then
         changed_bufs[buf][l] = true
-        pcall(vim.api.nvim_buf_add_highlight, buf, changed_hl_ns, "DiffAdd", l, 0, -1)
+        pcall(vim.api.nvim_buf_add_highlight, buf, changed_hl_ns, opts.changed_lines, l, 0, -1)
       end
     end
   end
@@ -77,39 +112,44 @@ function M.setup()
     end
   end
 
-  vim.api.nvim_create_autocmd({ "BufEnter", "BufReadPost", "BufNewFile" }, {
-    group = augroup,
-    pattern = "*",
-    callback = function(args)
-      if not is_file_buf(args.buf) then
-        pcall(vim.api.nvim_buf_clear_namespace, args.buf, changed_hl_ns, 0, -1)
-        return
-      end
-      attach_changed(args.buf)
-    end,
-  })
+  if opts.changed_lines then
+    vim.api.nvim_create_autocmd({ "BufEnter", "BufReadPost", "BufNewFile" }, {
+      group = augroup,
+      pattern = "*",
+      callback = function(args)
+        if not is_file_buf(args.buf) then
+          pcall(vim.api.nvim_buf_clear_namespace, args.buf, changed_hl_ns, 0, -1)
+          return
+        end
+        attach_changed(args.buf)
+      end,
+    })
 
-  vim.api.nvim_create_autocmd("BufWritePost", {
-    group = augroup,
-    pattern = "*",
-    callback = function(args)
-      local buf = args.buf
-      vim.api.nvim_buf_clear_namespace(buf, changed_hl_ns, 0, -1)
-      changed_bufs[buf] = {}
-    end,
-  })
+    vim.api.nvim_create_autocmd("BufWritePost", {
+      group = augroup,
+      pattern = "*",
+      callback = function(args)
+        local buf = args.buf
+        vim.api.nvim_buf_clear_namespace(buf, changed_hl_ns, 0, -1)
+        changed_bufs[buf] = {}
+      end,
+    })
+  end
 
   -- Dynamic hints for statusline
   ---@diagnostic disable-next-line: lowercase-global
   function _G.extra_lazy_hints()
+    if not opts.hints then
+      return ""
+    end
     local mode = vim.fn.mode()
     local modified = vim.bo.modified
     if mode == "v" or mode == "V" or mode == "\22" then
-      return "^C Copy  ^X Cut  ^A All"
+      return opts.hints.visual
     elseif modified then
-      return "^S Save  ^Z Undo  ^Q Quit"
+      return opts.hints.modified
     else
-      return "^V Paste  ^A All  ^Q Quit"
+      return opts.hints.normal
     end
   end
 
@@ -168,7 +208,7 @@ function M.setup()
   end
 
   -- Ctrl+S: Save file
-  vim.keymap.set({ "n", "i", "v", "s" }, "<C-s>", function()
+  map({ "n", "i", "v", "s" }, "<C-s>", function()
     -- ponytail: find("i") also matches "niI" (normal); check first char.
     if vim.fn.mode():sub(1, 1) == "i" then
       vim.cmd("stopinsert")
@@ -182,16 +222,16 @@ function M.setup()
   end, { desc = "Save File" })
 
   -- Ctrl+Q: Quit
-  vim.keymap.set({ "n", "i", "v" }, "<C-q>", try_quit, { desc = "Quit" })
+  map({ "n", "i", "v" }, "<C-q>", try_quit, { desc = "Quit" })
 
   -- Ctrl+N: New file
-  vim.keymap.set({ "n", "i", "v" }, "<C-n>", function()
+  map({ "n", "i", "v" }, "<C-n>", function()
     stop()
     vim.cmd("enew")
   end, { desc = "New File" })
 
   -- Ctrl+O: Open file
-  vim.keymap.set({ "n", "i", "v" }, "<C-o>", function()
+  map({ "n", "i", "v" }, "<C-o>", function()
     stop()
     vim.ui.input({ prompt = "Open file: " }, function(input)
       if input and input ~= "" then
@@ -201,25 +241,25 @@ function M.setup()
   end, { desc = "Open File" })
 
   -- Ctrl+Z: Undo (overrides terminal suspend)
-  vim.keymap.set({ "n", "i", "v" }, "<C-z>", function()
+  map({ "n", "i", "v" }, "<C-z>", function()
     stop()
     vim.cmd("undo")
   end, { desc = "Undo" })
 
   -- Ctrl+Y: Redo
-  vim.keymap.set({ "n", "i", "v" }, "<C-y>", function()
+  map({ "n", "i", "v" }, "<C-y>", function()
     stop()
     vim.cmd("redo")
   end, { desc = "Redo" })
 
   -- Ctrl+A: Select all
-  vim.keymap.set({ "n", "i", "v" }, "<C-a>", function()
+  map({ "n", "i", "v" }, "<C-a>", function()
     stop()
     vim.cmd("normal! ggVG")
   end, { desc = "Select All" })
 
   -- Ctrl+F: Search with Telescope
-  vim.keymap.set({ "n", "i", "v" }, "<C-f>", function()
+  map({ "n", "i", "v" }, "<C-f>", function()
     stop()
     local ok = pcall(function()
       require("telescope.builtin").live_grep()
@@ -230,7 +270,7 @@ function M.setup()
   end, { desc = "Find in Files" })
 
   -- Ctrl+R: Find word under cursor
-  vim.keymap.set({ "n", "i", "v" }, "<C-r>", function()
+  map({ "n", "i", "v" }, "<C-r>", function()
     stop()
     local ok = pcall(function()
       require("telescope.builtin").grep_string()
@@ -248,14 +288,14 @@ function M.setup()
   end, { desc = "Find Word Under Cursor" })
 
   -- Ctrl+D: Delete line (overrides scroll half-page)
-  vim.keymap.set({ "n", "i" }, "<C-d>", function()
+  map({ "n", "i" }, "<C-d>", function()
     stop()
     vim.cmd('normal! "_dd')
   end, { desc = "Delete Line" })
-  vim.keymap.set("v", "<C-d>", '"_d', { desc = "Delete Selection" })
+  map("v", "<C-d>", '"_d', { desc = "Delete Selection" })
 
   -- Ctrl+G: Go to line (overrides LazyVim's git status)
-  vim.keymap.set({ "n", "i", "v" }, "<C-g>", function()
+  map({ "n", "i", "v" }, "<C-g>", function()
     stop()
     vim.ui.input({ prompt = "Go to line: " }, function(input)
       local line = tonumber(input or "")
@@ -269,7 +309,7 @@ function M.setup()
   -- Ctrl+K: Open command-line (overrides window-up)
   -- Set immediately for early coverage, then re-set on VeryLazy to beat
   -- LazyVim's own <C-k> (window-up) which also maps on VeryLazy.
-  vim.keymap.set({ "n", "i" }, "<C-k>", open_cmdline, { desc = "Command Line" })
+  map({ "n", "i" }, "<C-k>", open_cmdline, { desc = "Command Line" })
 
   -- ponytail: LazyVim overrides <C-k> on VeryLazy, so we re-map there too.
   -- Our autocmd is registered during plugin config (before VeryLazy fires
@@ -278,12 +318,12 @@ function M.setup()
     pattern = "VeryLazy",
     group = augroup,
     callback = function()
-      vim.keymap.set({ "n", "i" }, "<C-k>", open_cmdline, { desc = "Command Line" })
+      map({ "n", "i" }, "<C-k>", open_cmdline, { desc = "Command Line" })
     end,
   })
 
   -- Double-Esc: Quit (novim-style)
-  vim.keymap.set("n", "<Esc><Esc>", try_quit, { desc = "Quit (double Esc)" })
+  map("n", "<Esc><Esc>", try_quit, { desc = "Quit (double Esc)" })
 
   ----------------------------------------------------------------------
   -- 4. Type-to-Insert Mode
@@ -291,43 +331,54 @@ function M.setup()
   -- Every printable character in normal mode enters insert mode and types it
   -- ponytail: byte loop covers all of 33-126; space (32) is skipped so
   -- <leader> (space) keeps working (? and \ were silently missing before).
-  for code = 33, 126 do
-    local char = string.char(code)
-    vim.keymap.set("n", char, "i" .. char, { noremap = true, desc = "" })
+  if opts.type_to_insert then
+    for code = 33, 126 do
+      local char = string.char(code)
+      map("n", char, "i" .. char, { noremap = true, desc = "" })
+    end
+    map("n", "<CR>", "i<CR>", { noremap = true, desc = "" })
+    map("n", "<BS>", '"_X', { desc = "Delete Character Backward" })
   end
 
   ----------------------------------------------------------------------
   -- 5. Visual Mode: typing replaces selection
   ----------------------------------------------------------------------
-  for code = 32, 126 do
-    local char = string.char(code)
-    vim.keymap.set("v", char, '"_c' .. char, { noremap = true, desc = "" })
-  end
+  if opts.visual_replace then
+    for code = 32, 126 do
+      local char = string.char(code)
+      map("v", char, '"_c' .. char, { noremap = true, desc = "" })
+    end
 
-  -- Visual mode Enter replaces selection with newline
-  vim.keymap.set("v", "<CR>", '"_c<CR>', { noremap = true, desc = "" })
-  vim.keymap.set("n", "<CR>", "i<CR>", { noremap = true, desc = "" })
-  vim.keymap.set("n", "<BS>", '"_X', { desc = "Delete Character Backward" })
-  vim.keymap.set("v", "<BS>", '"_d', { desc = "Delete Selection" })
-  vim.keymap.set("v", "<Del>", '"_d', { desc = "Delete Selection" })
+    -- Visual mode Enter replaces selection with newline
+    map("v", "<CR>", '"_c<CR>', { noremap = true, desc = "" })
+    map("v", "<BS>", '"_d', { desc = "Delete Selection" })
+    map("v", "<Del>", '"_d', { desc = "Delete Selection" })
+  end
 
   ----------------------------------------------------------------------
   -- 6. Arrow-key Selection
   ----------------------------------------------------------------------
-  for _, dir in ipairs({ { "Left", "h" }, { "Right", "l" }, { "Up", "k" }, { "Down", "j" } }) do
-    vim.keymap.set("n", "<S-" .. dir[1] .. ">", "v" .. dir[2], { desc = "Select " .. dir[1] })
-    vim.keymap.set("i", "<S-" .. dir[1] .. ">", "<Esc>v" .. dir[2], { desc = "Select " .. dir[1] })
-    vim.keymap.set("v", "<S-" .. dir[1] .. ">", dir[2], { desc = "Extend Selection " .. dir[1] })
+  if opts.arrow_selection then
+    for _, dir in ipairs({ { "Left", "h" }, { "Right", "l" }, { "Up", "k" }, { "Down", "j" } }) do
+      map("n", "<S-" .. dir[1] .. ">", "v" .. dir[2], { desc = "Select " .. dir[1] })
+      map("i", "<S-" .. dir[1] .. ">", "<Esc>v" .. dir[2], { desc = "Select " .. dir[1] })
+      map("v", "<S-" .. dir[1] .. ">", dir[2], { desc = "Extend Selection " .. dir[1] })
+    end
   end
 
   ----------------------------------------------------------------------
   -- 7. Clipboard Operations
   ----------------------------------------------------------------------
-  vim.keymap.set("v", "<C-c>", '"+ygv', { desc = "Copy" })
-  vim.keymap.set("v", "<C-x>", '"+x', { desc = "Cut" })
-  vim.keymap.set("n", "<C-v>", '"+gP', { desc = "Paste" })
-  vim.keymap.set("i", "<C-v>", '<C-r>+', { desc = "Paste" })
-  vim.keymap.set("v", "<C-v>", '"_d"+P', { desc = "Paste" })
+  map("v", "<C-c>", '"+ygv', { desc = "Copy" })
+  map("v", "<C-x>", '"+x', { desc = "Cut" })
+  map("n", "<C-v>", '"+gP', { desc = "Paste" })
+  map("i", "<C-v>", '<C-r>+', { desc = "Paste" })
+  map("v", "<C-v>", '"_d"+P', { desc = "Paste" })
+
+  for _, mapping in ipairs(overrides) do
+    vim.keymap.set(unpack(mapping))
+  end
+  overrides = nil
   has_setup = true
 end
 
