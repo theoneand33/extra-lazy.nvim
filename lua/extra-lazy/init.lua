@@ -85,11 +85,13 @@ function M.setup(opts)
     if not is_file_buf(buf) then
       return
     end
+    -- ponytail: changed_lines=true means default group; raw true is not a hl group.
+    local hl = opts.changed_lines == true and "DiffAdd" or opts.changed_lines
     changed_bufs[buf] = changed_bufs[buf] or {}
     for l = first, new_last - 1 do
       if not changed_bufs[buf][l] then
         changed_bufs[buf][l] = true
-        pcall(vim.api.nvim_buf_add_highlight, buf, changed_hl_ns, opts.changed_lines, l, 0, -1)
+        pcall(vim.api.nvim_buf_add_highlight, buf, changed_hl_ns, hl, l, 0, -1)
       end
     end
   end
@@ -134,6 +136,11 @@ function M.setup(opts)
         changed_bufs[buf] = {}
       end,
     })
+
+    -- ponytail: setup runs after buffers already exist; attach those too.
+    for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+      attach_changed(buf)
+    end
   end
 
   -- Dynamic hints for statusline
