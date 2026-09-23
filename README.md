@@ -58,6 +58,9 @@ use {
 | `Ctrl+K` | Command line |
 | `Esc Esc` | Quick quit |
 | `Shift+←→↑↓` | Select text |
+| `Ctrl+←` / `Ctrl+→` | Move by word |
+| `Ctrl+Backspace` | Delete word backward |
+| `Ctrl+Delete` | Delete word forward |
 | `Ctrl+C` | Copy (visual mode) |
 | `Ctrl+X` | Cut (visual mode) |
 | `Ctrl+V` | Paste |
@@ -87,6 +90,7 @@ require("extra-lazy").setup({
   type_to_insert = true,       -- type any character in normal mode to insert it
   visual_replace = true,       -- type over a visual selection to replace it
   arrow_selection = true,      -- Shift+Arrow to select text
+  word_movement = true,        -- Ctrl+Arrow word jump, Ctrl+Backspace/Delete word delete
   -- Remap or disable individual shortcuts ("lhs" -> false, or "lhs" -> new key)
   keymaps = {
     ["<C-d>"] = false,         -- restore default scroll half-page
