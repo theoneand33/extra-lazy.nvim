@@ -1,13 +1,47 @@
 name: smoke
-on: [push, pull_request]
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: smoke-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   smoke:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      NVIM_VERSION: stable
     steps:
-      - uses: actions/checkout@v4
-      - name: Install Neovim
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Install stable Neovim
+        shell: bash
         run: |
-          curl -LO https://github.com/neovim/neovim/releases/download/stable/nvim-linux-x86_64.tar.gz
-          tar xzf nvim-linux-x86_64.tar.gz
-          echo "$PWD/nvim-linux-x86_64/bin" >> $GITHUB_PATH
-      - run: nvim --headless -u NONE -l tests/smoke.lua
+          set -euo pipefail
+          asset="nvim-linux-x86_64.tar.gz"
+          archive="$RUNNER_TEMP/$asset"
+          release="$RUNNER_TEMP/neovim-release.json"
+          curl --fail --silent --show-error --location --retry 3 --proto '=https' --tlsv1.2 \
+            --output "$release" \
+            "https://api.github.com/repos/neovim/neovim/releases/tags/$NVIM_VERSION"
+          asset_url="$(jq -er --arg name "$asset" '.assets[] | select(.name == $name) | .url' "$release")"
+          digest="$(jq -er --arg name "$asset" '.assets[] | select(.name == $name) | .digest' "$release")"
+          [[ "$digest" == sha256:* ]] || { echo "Neovim asset has no SHA-256 digest" >&2; exit 1; }
+          curl --fail --silent --show-error --location --retry 3 --proto '=https' --tlsv1.2 \
+            --header 'Accept: application/octet-stream' --output "$archive" "$asset_url"
+          printf '%s  %s\n' "${digest#sha256:}" "$archive" | sha256sum --check --status
+          tar --extract --gzip --file "$archive" --directory "$RUNNER_TEMP"
+          test -x "$RUNNER_TEMP/nvim-linux-x86_64/bin/nvim"
+          printf '%s\n' "$RUNNER_TEMP/nvim-linux-x86_64/bin" >> "$GITHUB_PATH"
+          rm -f "$archive" "$release"
+      - name: Run smoke test
+        shell: bash
+        run: timeout 30s nvim --headless -u NONE -i NONE --noplugin -n -l tests/smoke.lua
