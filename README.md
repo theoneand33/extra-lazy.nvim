@@ -6,7 +6,7 @@ Inspired by [micro](https://github.com/zyedidia/micro), [ox](https://github.com/
 
 ## Features
 
-- Type-to-insert — Press any printable character in normal mode to insert it
+- Type-to-insert — Start in insert mode; press any printable character in normal mode to insert it
 - Visual mode replace — Select text and type to replace it
 - Ctrl shortcuts — Save (`Ctrl+S`), Quit (`Ctrl+Q`), Undo/Redo (`Ctrl+Z`/`Ctrl+Y`), Select All (`Ctrl+A`), and more
 - Mouse support — Click, double-click, selection with system clipboard integration
@@ -87,7 +87,7 @@ require("extra-lazy").setup({
     modified = "^S Save  ^Z Undo  ^Q Quit",
     normal = "^V Paste  ^A All  ^Q Quit",
   },
-  type_to_insert = true,       -- type any character in normal mode to insert it
+  type_to_insert = true,       -- start in insert mode; type in normal mode to insert it
   visual_replace = true,       -- type over a visual selection to replace it
   arrow_selection = true,      -- Shift+Arrow to select text
   word_movement = true,        -- Ctrl+Arrow word jump, Ctrl+Backspace/Delete word delete

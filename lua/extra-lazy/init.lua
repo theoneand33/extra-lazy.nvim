@@ -336,10 +336,18 @@ function M.setup(opts)
   ----------------------------------------------------------------------
   -- 4. Type-to-Insert Mode
   ----------------------------------------------------------------------
-  -- Every printable character in normal mode enters insert mode and types it
+  -- Start in insert mode and enter it by typing in normal mode
   -- ponytail: byte loop covers all of 33-126; space (32) is skipped so
   -- <leader> (space) keeps working (? and \ were silently missing before).
   if opts.type_to_insert then
+    vim.api.nvim_create_autocmd("VimEnter", {
+      group = augroup,
+      callback = function()
+        if is_file_buf(vim.api.nvim_get_current_buf()) then
+          pcall(vim.cmd, "startinsert")
+        end
+      end,
+    })
     for code = 33, 126 do
       local char = string.char(code)
       map("n", char, "i" .. char, { noremap = true, desc = "" })
