@@ -17,6 +17,10 @@ vim.schedule(function()
     local insert = vim.fn.maparg("<C-d>", "i", false, true)
     assert(normal.desc == "Delete Line" and type(normal.callback) == "function")
     assert(insert.desc == "Delete Line" and insert.callback == normal.callback)
+    assert(vim.fn.maparg("<C-Left>", "n", false, true).rhs == "b")
+    assert(vim.fn.maparg("<C-Right>", "i", false, true).rhs == "<C-o>w")
+    assert(vim.fn.maparg("<C-BS>", "i", false, true).rhs == '<C-o>"_db')
+    assert(vim.fn.maparg("<C-Del>", "n", false, true).rhs == '"_dw')
 
     plugin.setup()
     vim.api.nvim_exec_autocmds("BufEnter", { buffer = 0 })
@@ -56,6 +60,11 @@ vim.schedule(function()
     for reg, value in pairs(registers) do
       assert(vim.deep_equal(vim.fn.getreginfo(reg), value), "register changed: " .. reg)
     end
+    plugin._reset()
+    pcall(vim.keymap.del, "n", "<C-Left>")
+    plugin.setup({ word_movement = false })
+    assert(vim.tbl_isempty(vim.fn.maparg("<C-Left>", "n", false, true)))
+    assert(vim.fn.maparg("<C-d>", "n", false, true).desc == "Delete Line")
   end, debug.traceback)
   if not ok then
     vim.api.nvim_err_writeln(err)

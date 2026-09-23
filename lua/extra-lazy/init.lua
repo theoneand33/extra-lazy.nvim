@@ -28,6 +28,7 @@ function M.setup(opts)
     type_to_insert = true,
     visual_replace = true,
     arrow_selection = true,
+    word_movement = true,
     keymaps = {},
   }, opts or {})
 
@@ -374,7 +375,26 @@ function M.setup(opts)
   end
 
   ----------------------------------------------------------------------
-  -- 7. Clipboard Operations
+  -- 7. Word-wise Movement and Deletion
+  ----------------------------------------------------------------------
+  if opts.word_movement then
+    -- ponytail: native word motions; <C-o> keeps insert mode.
+    for _, dir in ipairs({ { "Left", "b" }, { "Right", "w" } }) do
+      map("n", "<C-" .. dir[1] .. ">", dir[2], { desc = "Move " .. dir[1] .. " by Word" })
+      map("i", "<C-" .. dir[1] .. ">", "<C-o>" .. dir[2], { desc = "Move " .. dir[1] .. " by Word" })
+      map("v", "<C-" .. dir[1] .. ">", dir[2], { desc = "Select " .. dir[1] .. " by Word" })
+    end
+    -- ponytail: "_ keeps registers clean, like <BS> -> "_X above.
+    map("n", "<C-BS>", '"_db', { desc = "Delete Word Backward" })
+    map("i", "<C-BS>", '<C-o>"_db', { desc = "Delete Word Backward" })
+    map("v", "<C-BS>", '"_d', { desc = "Delete Selection" })
+    map("n", "<C-Del>", '"_dw', { desc = "Delete Word Forward" })
+    map("i", "<C-Del>", '<C-o>"_dw', { desc = "Delete Word Forward" })
+    map("v", "<C-Del>", '"_d', { desc = "Delete Selection" })
+  end
+
+  ----------------------------------------------------------------------
+  -- 8. Clipboard Operations
   ----------------------------------------------------------------------
   map("v", "<C-c>", '"+ygv', { desc = "Copy" })
   map("v", "<C-x>", '"+x', { desc = "Cut" })
