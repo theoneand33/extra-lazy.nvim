@@ -6,13 +6,13 @@ Inspired by [micro](https://github.com/zyedidia/micro), [ox](https://github.com/
 
 ## Features
 
-- **Type-to-insert** — Press any printable character in normal mode to insert it
-- **Visual mode replace** — Select text and type to replace it
-- **Ctrl shortcuts** — Save (`Ctrl+S`), Quit (`Ctrl+Q`), Undo/Redo (`Ctrl+Z`/`Ctrl+Y`), Select All (`Ctrl+A`), and more
-- **Mouse support** — Click, double-click, selection with system clipboard integration
-- **Arrow-key selection** — `Shift+Arrow` to select text in any mode
-- **Changed-line highlighting** — Green gutter highlights for lines modified since last save
-- **Statusline hints** — Dynamic helper text showing available shortcuts
+- Type-to-insert — Press any printable character in normal mode to insert it
+- Visual mode replace — Select text and type to replace it
+- Ctrl shortcuts — Save (`Ctrl+S`), Quit (`Ctrl+Q`), Undo/Redo (`Ctrl+Z`/`Ctrl+Y`), Select All (`Ctrl+A`), and more
+- Mouse support — Click, double-click, selection with system clipboard integration
+- Arrow-key selection — `Shift+Arrow` to select text in any mode
+- Changed-line highlighting — Green gutter highlights for lines modified since last save
+- Statusline hints — Dynamic helper text showing available shortcuts
 
 ## Installation
 
