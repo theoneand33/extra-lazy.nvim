@@ -1,0 +1,95 @@
+*extra-lazy.txt*  Enhanced editor mode for LazyVim          *extra-lazy*
+
+extra-lazy.nvim makes Neovim behave like a modeless editor for (extra) lazy
+people. Inspired by micro, ox and novim.
+
+Type in Normal mode to insert text, press Ctrl shortcuts to save, quit, undo
+and paste, and use the mouse for the rest.
+
+==============================================================================
+SETUP                                                   *extra-lazy-setup*
+
+>lua
+    require("extra-lazy").setup({
+      -- optional overrides, see |extra-lazy-options|
+    })
+<
+The plugin is meant to load at startup (`lazy = false` in lazy.nvim).
+setup() is idempotent; calling it again does nothing.
+
+==============================================================================
+KEYMAPS                                               *extra-lazy-keymaps*
+
+Global shortcuts (Normal, Insert and Visual mode unless noted):
+
+  <C-s>             Save file. Prompts for a name when the buffer is unnamed.
+  <C-q>             Quit, asking first when there are unsaved changes.
+  <C-n>             New file.
+  <C-o>             Open file.
+  <C-z>             Undo.
+  <C-y>             Redo.
+  <C-a>             Select all.
+  <C-f>             Find in files; falls back to "/" without Telescope.
+  <C-r>             Find word under cursor; falls back to a prompt.
+  <C-d>             Delete line (Normal, Insert); delete selection (Visual).
+  <C-g>             Go to line.
+  <C-k>             Command line.
+  <Esc><Esc>        Quit (Normal mode).
+  <S-Left>          Select left (also Right, Up, Down).
+  <C-Left>          Move by word (also Right).
+  <C-BS>            Delete word backward.
+  <C-Del>           Delete word forward.
+  <C-c>             Copy (Visual mode).
+  <C-x>             Cut (Visual mode).
+  <C-v>             Paste (Normal, Insert, Visual).
+
+With type-to-insert enabled, every printable key in Normal mode inserts
+itself. With visual-replace enabled, typing over a selection replaces it.
+
+Remap or disable a shortcut with the "keymaps" option. A printable key is
+disabled by mapping it to `false`, for example `["s"] = false` restores
+substitute in Normal mode.
+
+==============================================================================
+OPTIONS                                               *extra-lazy-options*
+
+All options are optional; the defaults are shown in the README.
+
+  options              Table of |options| values applied by setup().
+  mouse_double_click   Boolean. Double-click opens entries in netrw.
+  changed_lines        Highlight group for lines changed since the last save.
+                       `true` means "DiffAdd"; `false` disables the feature.
+                       Undoing back to the saved state clears the marks;
+                       undoing only part of the changes can leave stale marks.
+  hints                Table with "visual", "modified" and "normal" strings,
+                       or `false` to disable statusline hints.
+  type_to_insert       Boolean. Start in Insert mode and insert printed keys
+                       typed in Normal mode.
+  visual_replace       Boolean. Typing replaces the current selection.
+  arrow_selection      Boolean. Shift+Arrow starts or extends a selection.
+  word_movement        Boolean. Ctrl+Arrow moves by word; Ctrl+Backspace and
+                       Ctrl+Delete delete words.
+  keymaps              Table of "lhs" -> new lhs, or "lhs" -> `false` to
+                       disable a mapping. `keymaps = false` disables all.
+
+==============================================================================
+STATUSLINE                                             *extra-lazy-hints*
+
+`extra_lazy_hints()` returns the hint text for the current mode. It is
+defined as soon as the module is required and returns an empty string until
+setup() runs, so it is safe to reference from a statusline:
+
+>lua
+    require("lualine").setup({
+      sections = { lualine_x = { extra_lazy_hints } },
+    })
+<
+==============================================================================
+DEVELOPMENT                                     *extra-lazy-development*
+
+Run the smoke test with Neovim on the PATH:
+
+>sh
+    nvim --headless -u NONE -i NONE --noplugin -n -l tests/smoke.lua
+<
+ vim:tw=78:ts=8:noet:ft=help:norl:

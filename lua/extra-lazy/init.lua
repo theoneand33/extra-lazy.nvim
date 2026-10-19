@@ -4,6 +4,23 @@
 
 local M = {}
 local has_setup = false
+local hint_text = nil
+
+-- Defined at require time so a statusline can call it before setup().
+---@diagnostic disable-next-line: lowercase-global
+function _G.extra_lazy_hints()
+  if not hint_text then
+    return ""
+  end
+  local mode = vim.fn.mode()
+  if mode == "v" or mode == "V" or mode == "\22" then
+    return hint_text.visual
+  elseif vim.bo.modified then
+    return hint_text.modified
+  else
+    return hint_text.normal
+  end
+end
 
 function M.setup(opts)
   if has_setup then
@@ -116,15 +133,25 @@ function M.setup(opts)
   end
 
   if opts.changed_lines then
+    local function clear_changed(buf)
+      pcall(vim.api.nvim_buf_clear_namespace, buf, changed_hl_ns, 0, -1)
+      changed_bufs[buf] = {}
+    end
+
     vim.api.nvim_create_autocmd({ "BufEnter", "BufReadPost", "BufNewFile" }, {
       group = augroup,
       pattern = "*",
       callback = function(args)
         if not is_file_buf(args.buf) then
-          pcall(vim.api.nvim_buf_clear_namespace, args.buf, changed_hl_ns, 0, -1)
+          clear_changed(args.buf)
           return
         end
         attach_changed(args.buf)
+        -- Reloads and undos done in another buffer leave 'modified' false but
+        -- stale marks behind.
+        if not vim.bo[args.buf].modified then
+          clear_changed(args.buf)
+        end
       end,
     })
 
@@ -132,9 +159,19 @@ function M.setup(opts)
       group = augroup,
       pattern = "*",
       callback = function(args)
-        local buf = args.buf
-        vim.api.nvim_buf_clear_namespace(buf, changed_hl_ns, 0, -1)
-        changed_bufs[buf] = {}
+        clear_changed(args.buf)
+      end,
+    })
+
+    vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
+      group = augroup,
+      pattern = "*",
+      callback = function(args)
+        -- ponytail: Neovim has no undo event; 'modified' clears when undo
+        -- returns to the saved state, which is when the marks should go.
+        if not vim.bo[args.buf].modified then
+          clear_changed(args.buf)
+        end
       end,
     })
 
@@ -145,21 +182,7 @@ function M.setup(opts)
   end
 
   -- Dynamic hints for statusline
-  ---@diagnostic disable-next-line: lowercase-global
-  function _G.extra_lazy_hints()
-    if not opts.hints then
-      return ""
-    end
-    local mode = vim.fn.mode()
-    local modified = vim.bo.modified
-    if mode == "v" or mode == "V" or mode == "\22" then
-      return opts.hints.visual
-    elseif modified then
-      return opts.hints.modified
-    else
-      return opts.hints.normal
-    end
-  end
+  hint_text = opts.hints or nil
 
   ----------------------------------------------------------------------
   -- 3. Global Keymaps (override LazyVim defaults)
@@ -174,8 +197,56 @@ function M.setup(opts)
   end
 
   local function save_err(err)
-    local msg = tostring(err):gsub("^Vim:%w+:", ""):gsub("^%s+", "")
+    local msg = tostring(err):gsub("^.*Vim%(?[%w_]*%)?:%s*", ""):match("^[^\n]*") or ""
     vim.api.nvim_echo({ { "Error saving: " .. msg, "ErrorMsg" } }, false, {})
+  end
+
+  local function report(ok, err)
+    if ok then
+      vim.api.nvim_echo({ { "Saved!", "String" } }, false, {})
+    elseif err then
+      save_err(err)
+    end
+  end
+
+  local function write(buf, target)
+    local function run(cmd)
+      if not vim.api.nvim_buf_is_valid(buf) then
+        report(false, "buffer was closed")
+        return
+      end
+      local ok, err
+      -- Catch inside the callback so nvim_buf_call doesn't wrap the error
+      -- in a Lua traceback.
+      local called = pcall(vim.api.nvim_buf_call, buf, function()
+        ok, err = pcall(vim.api.nvim_cmd, cmd, {})
+      end)
+      if not called then
+        ok, err = false, err
+      end
+      report(ok, err)
+    end
+    if target then
+      -- ponytail: fnameescape keeps %, # and spaces literal in Ex arguments;
+      -- saveas! overwrites the name the user picked.
+      run({ cmd = "saveas", args = { vim.fn.fnameescape(target) }, bang = true, mods = {} })
+    else
+      run({ cmd = "write", args = {}, mods = {} })
+    end
+  end
+
+  local function save()
+    local buf = vim.api.nvim_get_current_buf()
+    -- ponytail: :w fails with E32 on unnamed buffers; ask for a name instead.
+    if vim.bo[buf].buftype == "" and vim.api.nvim_buf_get_name(buf) == "" then
+      vim.ui.input({ prompt = "Save as: ", completion = "file" }, function(input)
+        if input and input:match("%S") then
+          write(buf, input)
+        end
+      end)
+    else
+      write(buf, nil)
+    end
   end
 
   local function try_quit()
@@ -221,12 +292,7 @@ function M.setup(opts)
     if vim.fn.mode():sub(1, 1) == "i" then
       vim.cmd("stopinsert")
     end
-    local ok, err = pcall(vim.cmd, "w")
-    if ok then
-      vim.api.nvim_echo({ { "Saved!", "String" } }, false, {})
-    elseif err then
-      save_err(err)
-    end
+    save()
   end, { desc = "Save File" })
 
   -- Ctrl+Q: Quit
@@ -420,6 +486,7 @@ end
 -- ponytail: dev reload keeps module cache, so setup() would no-op
 function M._reset()
   has_setup = false
+  hint_text = nil
 end
 
 return M

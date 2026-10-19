@@ -11,7 +11,7 @@ Inspired by [micro](https://github.com/zyedidia/micro), [ox](https://github.com/
 - Ctrl shortcuts — Save (`Ctrl+S`), Quit (`Ctrl+Q`), Undo/Redo (`Ctrl+Z`/`Ctrl+Y`), Select All (`Ctrl+A`), and more
 - Mouse support — Click, double-click, selection with system clipboard integration
 - Arrow-key selection — `Shift+Arrow` to select text in any mode
-- Changed-line highlighting — Green gutter highlights for lines modified since last save
+- Changed-line highlighting — Highlights lines modified since the last save
 - Statusline hints — Dynamic helper text showing available shortcuts
 
 ## Installation
@@ -39,11 +39,13 @@ use {
 }
 ```
 
+Full reference: `:help extra-lazy` (your plugin manager generates the help tags).
+
 ## Keymaps
 
 | Shortcut | Action |
 |---|---|
-| `Ctrl+S` | Save file |
+| `Ctrl+S` | Save file (prompts for a name when unnamed) |
 | `Ctrl+Q` | Quit (with unsaved warning) |
 | `Ctrl+N` | New file |
 | `Ctrl+O` | Open file |
@@ -100,7 +102,10 @@ require("extra-lazy").setup({
 })
 ```
 
-Keymap remaps win over type-to-insert, so `["<C-s>"] = "<leader>w"` frees `s` for normal motion again.
+Keymap remaps win over the plugin's own mappings. To get a printable key back
+for normal mode, disable its type-to-insert mapping directly (for example,
+`keymaps = { ["s"] = false }` restores substitute). Remapping a shortcut such as
+`["<C-s>"] = "<leader>w"` only moves that shortcut; it does not affect `s`.
 
 ## Statusline Integration
 
@@ -112,6 +117,12 @@ require("lualine").setup({
     lualine_x = { extra_lazy_hints },
   },
 })
+```
+
+## Development
+
+```sh
+nvim --headless -u NONE -i NONE --noplugin -n -l tests/smoke.lua
 ```
 
 ## License
