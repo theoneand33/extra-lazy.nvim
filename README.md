@@ -45,7 +45,7 @@ Full reference: `:help extra-lazy` (your plugin manager generates the help tags)
 
 | Shortcut | Action |
 |---|---|
-| `Ctrl+S` | Save file (prompts for a name when unnamed) |
+| `Ctrl+S` | Save file (prompts for a name when unnamed; confirms overwrite) |
 | `Ctrl+Q` | Quit (with unsaved warning) |
 | `Ctrl+N` | New file |
 | `Ctrl+O` | Open file |
@@ -103,8 +103,9 @@ require("extra-lazy").setup({
 ```
 
 Keymap remaps win over the plugin's own mappings. To get a printable key back
-for normal mode, disable its type-to-insert mapping directly (for example,
-`keymaps = { ["s"] = false }` restores substitute). Remapping a shortcut such as
+for normal mode, disable it in the `keymaps` option (for example,
+`keymaps = { ["s"] = false }` restores substitute). A disabled printable key
+also stops replacing a visual selection. Remapping a shortcut such as
 `["<C-s>"] = "<leader>w"` only moves that shortcut; it does not affect `s`.
 
 ## Statusline Integration

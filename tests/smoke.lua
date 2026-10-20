@@ -86,12 +86,25 @@ vim.schedule(function()
     local as_target = vim.fn.tempname() .. " sp ace#1%2.txt"
     vim.fn.writefile({ "old" }, as_target)
     local input = vim.ui.input
+    local select = vim.ui.select
     vim.ui.input = function(_, callback)
       callback(as_target)
     end
+    -- Cancelling the overwrite prompt leaves the existing file alone.
+    vim.ui.select = function(_, _, callback)
+      callback(nil)
+    end
     vim.api.nvim_buf_set_lines(0, 0, -1, false, { "save me" })
     mapping("n", "<C-s>").callback()
+    assert(vim.fn.readfile(as_target)[1] == "old", "cancel still overwrote the file")
+    assert(vim.api.nvim_buf_get_name(0) == "", "cancel renamed the buffer")
+    -- Confirming overwrites the existing file and names the buffer.
+    vim.ui.select = function(_, _, callback)
+      callback("Overwrite")
+    end
+    mapping("n", "<C-s>").callback()
     vim.ui.input = input
+    vim.ui.select = select
     assert(vim.fn.readfile(as_target)[1] == "save me", "save-as did not overwrite/write the file")
     assert(vim.api.nvim_buf_get_name(0) == as_target, "save-as did not name the buffer")
 

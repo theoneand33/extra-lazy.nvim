@@ -22,7 +22,8 @@ KEYMAPS                                               *extra-lazy-keymaps*
 
 Global shortcuts (Normal, Insert and Visual mode unless noted):
 
-  <C-s>             Save file. Prompts for a name when the buffer is unnamed.
+  <C-s>             Save file. Prompts for a name when the buffer is unnamed,
+                    and asks before overwriting an existing file.
   <C-q>             Quit, asking first when there are unsaved changes.
   <C-n>             New file.
   <C-o>             Open file.
@@ -48,7 +49,7 @@ itself. With visual-replace enabled, typing over a selection replaces it.
 
 Remap or disable a shortcut with the "keymaps" option. A printable key is
 disabled by mapping it to `false`, for example `["s"] = false` restores
-substitute in Normal mode.
+substitute in Normal mode and stops it replacing a visual selection.
 
 ==============================================================================
 OPTIONS                                               *extra-lazy-options*

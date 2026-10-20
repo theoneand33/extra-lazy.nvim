@@ -218,11 +218,11 @@ function M.setup(opts)
       local ok, err
       -- Catch inside the callback so nvim_buf_call doesn't wrap the error
       -- in a Lua traceback.
-      local called = pcall(vim.api.nvim_buf_call, buf, function()
+      local called, call_err = pcall(vim.api.nvim_buf_call, buf, function()
         ok, err = pcall(vim.api.nvim_cmd, cmd, {})
       end)
       if not called then
-        ok, err = false, err
+        ok, err = false, call_err
       end
       report(ok, err)
     end
@@ -240,7 +240,16 @@ function M.setup(opts)
     -- ponytail: :w fails with E32 on unnamed buffers; ask for a name instead.
     if vim.bo[buf].buftype == "" and vim.api.nvim_buf_get_name(buf) == "" then
       vim.ui.input({ prompt = "Save as: ", completion = "file" }, function(input)
-        if input and input:match("%S") then
+        if not (input and input:match("%S")) then
+          return
+        end
+        if vim.fn.filereadable(vim.fn.expand(input)) == 1 then
+          vim.ui.select({ "Overwrite", "Cancel" }, { prompt = input .. " exists:" }, function(choice)
+            if choice == "Overwrite" then
+              write(buf, input)
+            end
+          end)
+        else
           write(buf, input)
         end
       end)
@@ -266,7 +275,17 @@ function M.setup(opts)
       { prompt = "You have unsaved changes:" },
       function(choice)
         if choice == "Save and Quit" then
-          -- ponytail: :wa fails on unnamed buffers (E141); don't quit then.
+          -- ponytail: :wa fails on unnamed buffers (E141); ask for a name first.
+          for _, info in ipairs(vim.fn.getbufinfo({ buflisted = 1, bufmodified = 1 })) do
+            if
+              info.loaded ~= 0
+              and vim.bo[info.bufnr].buftype == ""
+              and vim.api.nvim_buf_get_name(info.bufnr) == ""
+            then
+              vim.api.nvim_echo({ { "Save the unnamed buffer first (Ctrl+S)", "WarningMsg" } }, false, {})
+              return
+            end
+          end
           local ok, err = pcall(vim.cmd, "wa")
           if ok then
             vim.cmd("qa")
