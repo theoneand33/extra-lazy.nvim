@@ -5,6 +5,8 @@
 local M = {}
 local has_setup = false
 local hint_text = nil
+local attached = {}
+local generation = 0
 
 -- Defined at require time so a statusline can call it before setup().
 ---@diagnostic disable-next-line: lowercase-global
@@ -49,6 +51,9 @@ function M.setup(opts)
     keymaps = {},
   }, opts or {})
 
+  generation = generation + 1
+  local gen = generation
+
   local overrides = {}
   local function map(modes, lhs, rhs, options)
     if opts.keymaps == false or opts.keymaps[lhs] == false then
@@ -90,8 +95,6 @@ function M.setup(opts)
   -- ponytail: on_lines gives the exact edited range; cursor-line-only
   -- marking missed multi-line pastes.
   local changed_hl_ns = vim.api.nvim_create_namespace("extra_lazy_changed_lines")
-  local changed_bufs = {}
-  local attached = {}
 
   local function is_file_buf(buf)
     -- ponytail: dashboard/lazy/etc use buftype=nofile; highlighting those
@@ -105,11 +108,14 @@ function M.setup(opts)
     end
     -- ponytail: changed_lines=true means default group; raw true is not a hl group.
     local hl = opts.changed_lines == true and "DiffAdd" or opts.changed_lines
-    changed_bufs[buf] = changed_bufs[buf] or {}
     for l = first, new_last - 1 do
-      if not changed_bufs[buf][l] then
-        changed_bufs[buf][l] = true
-        pcall(vim.api.nvim_buf_add_highlight, buf, changed_hl_ns, hl, l, 0, -1)
+      -- Ask the namespace, not a line-number table: extmarks move with edits.
+      -- right_gravity=false keeps the mark on its line when the line is replaced.
+      if #vim.api.nvim_buf_get_extmarks(buf, changed_hl_ns, { l, 0 }, { l, -1 }, {}) == 0 then
+        pcall(vim.api.nvim_buf_set_extmark, buf, changed_hl_ns, l, 0, {
+          line_hl_group = hl,
+          right_gravity = false,
+        })
       end
     end
   end
@@ -120,22 +126,26 @@ function M.setup(opts)
     end
     local ok = pcall(vim.api.nvim_buf_attach, buf, false, {
       on_lines = function(_, b, _, firstline, _, new_last, _)
+        -- A callback from a previous setup() stays attached after _reset().
+        if gen ~= generation then
+          return true
+        end
         mark_changed(b, firstline, new_last)
       end,
       on_detach = function(_, b)
-        attached[b] = nil
-        changed_bufs[b] = nil
+        if attached[b] == gen then
+          attached[b] = nil
+        end
       end,
     })
     if ok then
-      attached[buf] = true
+      attached[buf] = gen
     end
   end
 
   if opts.changed_lines then
     local function clear_changed(buf)
       pcall(vim.api.nvim_buf_clear_namespace, buf, changed_hl_ns, 0, -1)
-      changed_bufs[buf] = {}
     end
 
     vim.api.nvim_create_autocmd({ "BufEnter", "BufReadPost", "BufNewFile" }, {
@@ -243,14 +253,16 @@ function M.setup(opts)
         if not (input and input:match("%S")) then
           return
         end
-        if vim.fn.filereadable(vim.fn.expand(input)) == 1 then
-          vim.ui.select({ "Overwrite", "Cancel" }, { prompt = input .. " exists:" }, function(choice)
+        -- Check and write the same expanded path, like :saveas does.
+        local target = vim.fn.expand(input)
+        if vim.fn.filereadable(target) == 1 then
+          vim.ui.select({ "Overwrite", "Cancel" }, { prompt = target .. " exists:" }, function(choice)
             if choice == "Overwrite" then
-              write(buf, input)
+              write(buf, target)
             end
           end)
         else
-          write(buf, input)
+          write(buf, target)
         end
       end)
     else
@@ -328,7 +340,7 @@ function M.setup(opts)
     stop()
     vim.ui.input({ prompt = "Open file: " }, function(input)
       if input and input ~= "" then
-        vim.cmd.e({ args = { input } })
+        vim.cmd.e({ args = { vim.fn.fnameescape(input) } })
       end
     end)
   end, { desc = "Open File" })
@@ -421,9 +433,15 @@ function M.setup(opts)
   ----------------------------------------------------------------------
   -- 4. Type-to-Insert Mode
   ----------------------------------------------------------------------
-  -- Start in insert mode and enter it by typing in normal mode
-  -- ponytail: byte loop covers all of 33-126; space (32) is skipped so
-  -- <leader> (space) keeps working (? and \ were silently missing before).
+  -- ponytail: help, quickfix, netrw and the dashboard are not editable;
+  -- there a printable key must keep its normal meaning. Expr mappings keep
+  -- the returned keys in the mode the callback was started from.
+  -- 33-126 skips space so <leader> (space) still works.
+  local function editable()
+    local buf = vim.api.nvim_get_current_buf()
+    return is_file_buf(buf) and vim.bo[buf].modifiable
+  end
+
   if opts.type_to_insert then
     vim.api.nvim_create_autocmd("VimEnter", {
       group = augroup,
@@ -435,10 +453,16 @@ function M.setup(opts)
     })
     for code = 33, 126 do
       local char = string.char(code)
-      map("n", char, "i" .. char, { noremap = true, desc = "" })
+      map("n", char, function()
+        return editable() and "i" .. char or char
+      end, { expr = true, noremap = true, desc = "" })
     end
-    map("n", "<CR>", "i<CR>", { noremap = true, desc = "" })
-    map("n", "<BS>", '"_X', { desc = "Delete Character Backward" })
+    map("n", "<CR>", function()
+      return editable() and "i<CR>" or "<CR>"
+    end, { expr = true, noremap = true, desc = "" })
+    map("n", "<BS>", function()
+      return editable() and '"_X' or "<BS>"
+    end, { expr = true, desc = "Delete Character Backward" })
   end
 
   ----------------------------------------------------------------------
@@ -447,13 +471,21 @@ function M.setup(opts)
   if opts.visual_replace then
     for code = 32, 126 do
       local char = string.char(code)
-      map("v", char, '"_c' .. char, { noremap = true, desc = "" })
+      map("v", char, function()
+        return editable() and '"_c' .. char or char
+      end, { expr = true, noremap = true, desc = "" })
     end
 
     -- Visual mode Enter replaces selection with newline
-    map("v", "<CR>", '"_c<CR>', { noremap = true, desc = "" })
-    map("v", "<BS>", '"_d', { desc = "Delete Selection" })
-    map("v", "<Del>", '"_d', { desc = "Delete Selection" })
+    map("v", "<CR>", function()
+      return editable() and '"_c<CR>' or "<CR>"
+    end, { expr = true, noremap = true, desc = "" })
+    map("v", "<BS>", function()
+      return editable() and '"_d' or "<BS>"
+    end, { expr = true, desc = "Delete Selection" })
+    map("v", "<Del>", function()
+      return editable() and '"_d' or "<Del>"
+    end, { expr = true, desc = "Delete Selection" })
   end
 
   ----------------------------------------------------------------------
@@ -504,6 +536,8 @@ end
 
 -- ponytail: dev reload keeps module cache, so setup() would no-op
 function M._reset()
+  generation = generation + 1
+  attached = {}
   has_setup = false
   hint_text = nil
 end

@@ -152,6 +152,73 @@ vim.schedule(function()
     vim.api.nvim_exec_autocmds("TextChanged", { buffer = 0 })
     assert(#vim.api.nvim_buf_get_extmarks(0, ns, 0, -1, {}) == 1, "modified buffer lost its marks")
 
+    -- Type-to-insert still inserts in an editable file buffer, and typing over
+    -- a selection still replaces it.
+    vim.cmd("enew!")
+    press("x")
+    assert(vim.api.nvim_buf_get_lines(0, 0, -1, false)[1] == "x", "type-to-insert did not insert")
+    press("<Esc>")
+    vim.api.nvim_buf_set_lines(0, 0, -1, false, { "abc" })
+    vim.api.nvim_win_set_cursor(0, { 1, 0 })
+    vim.cmd("normal! v2l")
+    press("z")
+    assert(vim.api.nvim_buf_get_lines(0, 0, -1, false)[1] == "z", "visual replace did not replace")
+    press("<Esc>")
+
+    -- Read-only buffers keep their normal keys: j scrolls help.
+    vim.cmd("help")
+    vim.api.nvim_win_set_cursor(0, { 1, 0 })
+    press("j")
+    assert(vim.fn.mode() == "n", "help: printable key left normal mode")
+    assert(vim.api.nvim_win_get_cursor(0)[1] == 2, "help: j did not move")
+    vim.cmd("helpclose")
+
+    -- Ctrl+O opens paths with characters Ex treats specially.
+    local open_target = vim.fn.tempname() .. " 100%#1.txt"
+    vim.fn.writefile({ "opened" }, open_target)
+    vim.ui.input = function(_, callback)
+      callback(open_target)
+    end
+    mapping("n", "<C-o>").callback()
+    vim.ui.input = input
+    assert(vim.api.nvim_buf_get_name(0) == open_target, "Ctrl+O did not open " .. open_target)
+
+    -- Save-as checks and writes the same expanded path, so $VAR names do not
+    -- silently overwrite the literal file.
+    local dir = vim.fn.tempname()
+    vim.fn.mkdir(dir, "p")
+    vim.env.EXTRA_LAZY_TEST = "target"
+    local literal = dir .. "/x$EXTRA_LAZY_TEST"
+    local expanded = dir .. "/xtarget"
+    vim.fn.writefile({ "OLD" }, literal)
+    vim.fn.writefile({ "OLD" }, expanded)
+    vim.cmd("enew!")
+    vim.api.nvim_buf_set_lines(0, 0, -1, false, { "NEW" })
+    vim.ui.input = function(_, callback)
+      callback(literal)
+    end
+    vim.ui.select = function(_, _, callback)
+      callback("Overwrite")
+    end
+    mapping("n", "<C-s>").callback()
+    vim.ui.input, vim.ui.select = input, select
+    vim.env.EXTRA_LAZY_TEST = nil
+    assert(vim.fn.readfile(expanded)[1] == "NEW", "save-as did not write the expanded path")
+    assert(vim.fn.readfile(literal)[1] == "OLD", "save-as overwrote the literal path")
+
+    -- Changed-line marks follow text when lines are inserted above them.
+    local shift_target = vim.fn.tempname()
+    local body = {}
+    for i = 1, 30 do
+      body[i] = "line " .. i
+    end
+    vim.fn.writefile(body, shift_target)
+    vim.cmd.edit(shift_target)
+    vim.api.nvim_buf_set_lines(0, 9, 10, false, { "changed" })
+    vim.api.nvim_buf_set_lines(0, 0, 0, false, { "a", "b", "c", "d", "e" })
+    vim.api.nvim_buf_set_lines(0, 9, 10, false, { "changed later" })
+    assert(#vim.api.nvim_buf_get_extmarks(0, ns, { 9, 0 }, { 9, -1 }, {}) == 1, "shifted line not marked")
+
     plugin._reset()
     local word_keys = { "<C-Left>", "<C-Right>", "<C-BS>", "<C-Del>" }
     for _, mode in ipairs({ "n", "i", "v" }) do
@@ -166,6 +233,14 @@ vim.schedule(function()
       end
     end
     assert(mapping("n", "<C-d>").desc == "Delete Line")
+
+    -- _reset()+setup() must not leave a second changed-line watcher.
+    vim.api.nvim_exec_autocmds("BufWritePost", { buffer = 0 })
+    vim.api.nvim_buf_set_lines(0, 20, 21, false, { "reloaded" })
+    assert(
+      #vim.api.nvim_buf_get_extmarks(0, ns, { 20, 0 }, { 20, -1 }, {}) == 1,
+      "reload duplicated changed-line marks"
+    )
 
     plugin._reset()
     for _, mode in ipairs({ "n", "i", "v" }) do

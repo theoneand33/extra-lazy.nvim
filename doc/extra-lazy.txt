@@ -46,6 +46,8 @@ Global shortcuts (Normal, Insert and Visual mode unless noted):
 
 With type-to-insert enabled, every printable key in Normal mode inserts
 itself. With visual-replace enabled, typing over a selection replaces it.
+Read-only buffers (help, quickfix) and non-file buffers (netrw, dashboard)
+keep their normal keys.
 
 Remap or disable a shortcut with the "keymaps" option. A printable key is
 disabled by mapping it to `false`, for example `["s"] = false` restores

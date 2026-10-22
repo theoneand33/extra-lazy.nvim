@@ -6,7 +6,7 @@ Inspired by [micro](https://github.com/zyedidia/micro), [ox](https://github.com/
 
 ## Features
 
-- Type-to-insert — Start in insert mode; press any printable character in normal mode to insert it
+- Type-to-insert — Start in insert mode; press any printable character in normal mode to insert it (read-only buffers keep their normal keys)
 - Visual mode replace — Select text and type to replace it
 - Ctrl shortcuts — Save (`Ctrl+S`), Quit (`Ctrl+Q`), Undo/Redo (`Ctrl+Z`/`Ctrl+Y`), Select All (`Ctrl+A`), and more
 - Mouse support — Click, double-click, selection with system clipboard integration
