@@ -250,6 +250,87 @@ vim.schedule(function()
     assert(mapping("n", "<C-x>").desc == "Delete Line")
     assert(mapping("i", "<C-x>").desc == "Delete Line")
     assert(mapping("v", "<C-x>").rhs == '"_d')
+
+    -- Deleting a line marks the line the text was joined into.
+    local del_target = vim.fn.tempname()
+    vim.fn.writefile({ "one", "two", "three" }, del_target)
+    vim.cmd.edit(vim.fn.fnameescape(del_target))
+    vim.api.nvim_buf_set_lines(0, 1, 2, false, {})
+    assert(#vim.api.nvim_buf_get_extmarks(0, ns, 0, -1, {}) == 1, "deleted line not tracked")
+
+    -- A save-as name starting with # stays a file name instead of becoming
+    -- the alternate file (or throwing E194).
+    local cwd = vim.fn.getcwd()
+    local special_dir = vim.fn.tempname()
+    vim.fn.mkdir(special_dir, "p")
+    vim.cmd.cd(special_dir)
+    vim.cmd("enew!")
+    vim.api.nvim_buf_set_lines(0, 0, -1, false, { "hash" })
+    vim.ui.input = function(_, callback)
+      callback("#notes.txt")
+    end
+    mapping("n", "<C-s>").callback()
+    vim.ui.input = input
+    assert(vim.api.nvim_buf_get_name(0) == special_dir .. "/#notes.txt", "save-as expanded a leading #")
+    assert(vim.fn.readfile(special_dir .. "/#notes.txt")[1] == "hash", "save-as wrote the wrong file")
+    vim.cmd.cd(cwd)
+
+    -- An existing file that cannot be read still gets the overwrite question.
+    local wo_dir = vim.fn.tempname()
+    vim.fn.mkdir(wo_dir, "p")
+    local wo = wo_dir .. "/write-only.txt"
+    vim.fn.writefile({ "KEEP" }, wo)
+    vim.fn.setfperm(wo, "-w-------")
+    vim.cmd("enew!")
+    vim.api.nvim_buf_set_lines(0, 0, -1, false, { "NEW" })
+    local asked = false
+    vim.ui.input = function(_, callback)
+      callback(wo)
+    end
+    vim.ui.select = function(_, _, callback)
+      asked = true
+      callback("Cancel")
+    end
+    mapping("n", "<C-s>").callback()
+    vim.ui.input, vim.ui.select = input, select
+    vim.fn.setfperm(wo, "rw-------")
+    assert(asked, "no overwrite prompt for an existing unreadable file")
+    assert(vim.fn.readfile(wo)[1] == "KEEP", "cancelled save-as changed the file")
+
+    -- Ctrl+O expands $VAR paths instead of opening a literal name.
+    local env_file = vim.fn.tempname()
+    vim.fn.writefile({ "env" }, env_file)
+    vim.env.EXTRA_LAZY_OPEN = env_file
+    vim.ui.input = function(_, callback)
+      callback("$EXTRA_LAZY_OPEN")
+    end
+    mapping("n", "<C-o>").callback()
+    vim.ui.input = input
+    vim.env.EXTRA_LAZY_OPEN = nil
+    assert(vim.api.nvim_buf_get_name(0) == env_file, "Ctrl+O did not expand $EXTRA_LAZY_OPEN")
+
+    -- Quit asks about a modified buffer that is not in the buffer list.
+    local unlisted = vim.fn.tempname()
+    vim.fn.writefile({ "base" }, unlisted)
+    vim.cmd.edit(vim.fn.fnameescape(unlisted))
+    vim.api.nvim_buf_set_lines(0, 0, -1, false, { "dirty" })
+    vim.bo.buflisted = false
+    local prompted = nil
+    vim.ui.select = function(_, opts, callback)
+      prompted = opts.prompt
+      callback("Cancel")
+    end
+    local quit_ok, quit_err = pcall(mapping("n", "<Esc><Esc>").callback)
+    vim.ui.select = select
+    assert(quit_ok, "quit errored: " .. tostring(quit_err))
+    assert(prompted == "You have unsaved changes:", "quit ignored an unlisted modified buffer")
+
+    -- Remapping to a typeable key must not shadow Insert-mode typing.
+    plugin._reset()
+    plugin.setup({ keymaps = { ["<C-s>"] = "j" } })
+    assert(mapping("n", "j").desc == "Save File", "typeable remap missing in Normal mode")
+    assert(mapping("v", "j").desc == "Save File", "typeable remap missing in Visual mode")
+    assert(next(mapping("i", "j")) == nil, "typeable remap shadowed Insert mode")
   end, debug.traceback)
   vim.api.nvim_buf_attach = attach
   if not ok then

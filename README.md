@@ -6,7 +6,7 @@ Inspired by [micro](https://github.com/zyedidia/micro), [ox](https://github.com/
 
 ## Features
 
-- Type-to-insert — Start in insert mode; press any printable character in normal mode to insert it (read-only buffers keep their normal keys)
+- Type-to-insert — Start in insert mode; press any printable character in normal mode to insert it (non-modifiable buffers keep their normal keys)
 - Visual mode replace — Select text and type to replace it
 - Ctrl shortcuts — Save (`Ctrl+S`), Quit (`Ctrl+Q`), Undo/Redo (`Ctrl+Z`/`Ctrl+Y`), Select All (`Ctrl+A`), and more
 - Mouse support — Click, double-click, selection with system clipboard integration
@@ -107,6 +107,8 @@ for normal mode, disable it in the `keymaps` option (for example,
 `keymaps = { ["s"] = false }` restores substitute). A disabled printable key
 also stops replacing a visual selection. Remapping a shortcut such as
 `["<C-s>"] = "<leader>w"` only moves that shortcut; it does not affect `s`.
+A new key you can type (such as `<leader>w`) is mapped in Normal and Visual
+mode only, so it never swallows text typed in Insert mode.
 
 ## Statusline Integration
 

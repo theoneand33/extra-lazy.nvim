@@ -54,6 +54,20 @@ function M.setup(opts)
   generation = generation + 1
   local gen = generation
 
+  -- A remapped lhs that you can type must not shadow Insert/Select typing.
+  local function typing_modes(modes)
+    if type(modes) ~= "table" then
+      return (modes == "n" or modes == "v") and modes or false
+    end
+    local out = {}
+    for _, mode in ipairs(modes) do
+      if mode == "n" or mode == "v" then
+        out[#out + 1] = mode
+      end
+    end
+    return #out > 0 and out or false
+  end
+
   local overrides = {}
   local function map(modes, lhs, rhs, options)
     if opts.keymaps == false or opts.keymaps[lhs] == false then
@@ -63,7 +77,12 @@ function M.setup(opts)
     if key and overrides then
       -- ponytail: remapped keymaps must win over type-to-insert loops, so
       -- they're applied after all default mappings are set.
-      overrides[#overrides + 1] = { modes, key, rhs, options }
+      -- "<leader>w" and "j" are typed in Insert mode, so remaps to them stay
+      -- Normal/Visual only instead of swallowing typed text.
+      local target_modes = key:gsub("<[^>]+>", "") ~= "" and typing_modes(modes) or modes
+      if target_modes then
+        overrides[#overrides + 1] = { target_modes, key, rhs, options }
+      end
     else
       vim.keymap.set(modes, key or lhs, rhs, options)
     end
@@ -108,10 +127,22 @@ function M.setup(opts)
     end
     -- ponytail: changed_lines=true means default group; raw true is not a hl group.
     local hl = opts.changed_lines == true and "DiffAdd" or opts.changed_lines
+    if new_last <= first then
+      -- A deletion has no new text; mark the line the text was joined into.
+      local count = vim.api.nvim_buf_line_count(buf)
+      first = math.min(first, count - 1)
+      new_last = math.min(first + 1, count)
+    end
+    -- One query for the whole range, not one per line: big pastes are common.
+    local marked = {}
+    local marks = vim.api.nvim_buf_get_extmarks(buf, changed_hl_ns, { first, 0 }, { new_last - 1, -1 }, {})
+    for _, mark in ipairs(marks) do
+      marked[mark[2]] = true
+    end
     for l = first, new_last - 1 do
       -- Ask the namespace, not a line-number table: extmarks move with edits.
       -- right_gravity=false keeps the mark on its line when the line is replaced.
-      if #vim.api.nvim_buf_get_extmarks(buf, changed_hl_ns, { l, 0 }, { l, -1 }, {}) == 0 then
+      if not marked[l] then
         pcall(vim.api.nvim_buf_set_extmark, buf, changed_hl_ns, l, 0, {
           line_hl_group = hl,
           right_gravity = false,
@@ -219,6 +250,13 @@ function M.setup(opts)
     end
   end
 
+  -- Expand ~ and $VAR from a prompt, but keep #, %, and wildcards literal:
+  -- expand() would otherwise target the alternate file or many files at once.
+  local function expand_path(input)
+    local escaped = input:gsub("[\\%%#%*%?%[%{]", "\\%0")
+    return vim.fn.expand(escaped)
+  end
+
   local function write(buf, target)
     local function run(cmd)
       if not vim.api.nvim_buf_is_valid(buf) then
@@ -254,8 +292,15 @@ function M.setup(opts)
           return
         end
         -- Check and write the same expanded path, like :saveas does.
-        local target = vim.fn.expand(input)
-        if vim.fn.filereadable(target) == 1 then
+        local target = expand_path(input)
+        local kind = vim.fn.getftype(target)
+        if kind == "dir" then
+          vim.api.nvim_echo({ { target .. " is a directory", "ErrorMsg" } }, false, {})
+          return
+        end
+        -- getftype, not filereadable: an existing file you cannot read still
+        -- needs the overwrite question.
+        if kind ~= "" then
           vim.ui.select({ "Overwrite", "Cancel" }, { prompt = target .. " exists:" }, function(choice)
             if choice == "Overwrite" then
               write(buf, target)
@@ -270,15 +315,20 @@ function M.setup(opts)
     end
   end
 
-  local function try_quit()
-    local unsaved = false
-    for _, info in ipairs(vim.fn.getbufinfo({ buflisted = 1, bufmodified = 1 })) do
+  -- No buflisted filter: :qall also refuses unlisted modified buffers.
+  local function modified_bufs()
+    local bufs = {}
+    for _, info in ipairs(vim.fn.getbufinfo({ bufmodified = 1 })) do
       if info.loaded ~= 0 and vim.bo[info.bufnr].buftype == "" then
-        unsaved = true
-        break
+        bufs[#bufs + 1] = info.bufnr
       end
     end
-    if not unsaved then
+    return bufs
+  end
+
+  local function try_quit()
+    local unsaved = modified_bufs()
+    if #unsaved == 0 then
       vim.cmd("qa")
       return
     end
@@ -288,12 +338,8 @@ function M.setup(opts)
       function(choice)
         if choice == "Save and Quit" then
           -- ponytail: :wa fails on unnamed buffers (E141); ask for a name first.
-          for _, info in ipairs(vim.fn.getbufinfo({ buflisted = 1, bufmodified = 1 })) do
-            if
-              info.loaded ~= 0
-              and vim.bo[info.bufnr].buftype == ""
-              and vim.api.nvim_buf_get_name(info.bufnr) == ""
-            then
+          for _, buf in ipairs(unsaved) do
+            if vim.api.nvim_buf_get_name(buf) == "" then
               vim.api.nvim_echo({ { "Save the unnamed buffer first (Ctrl+S)", "WarningMsg" } }, false, {})
               return
             end
@@ -340,7 +386,7 @@ function M.setup(opts)
     stop()
     vim.ui.input({ prompt = "Open file: " }, function(input)
       if input and input ~= "" then
-        vim.cmd.e({ args = { vim.fn.fnameescape(input) } })
+        vim.cmd.e({ args = { vim.fn.fnameescape(expand_path(input)) } })
       end
     end)
   end, { desc = "Open File" })
